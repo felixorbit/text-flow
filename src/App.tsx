@@ -1,35 +1,207 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import ReactFlow, {
+  ReactFlowProvider,
+  Controls,
+  Background,
+  applyNodeChanges,
+  applyEdgeChanges,
+  addEdge,
+  useReactFlow,
+} from 'reactflow';
+import type {
+  NodeChange,
+  EdgeChange,
+  Connection,
+  Edge,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import { nanoid } from 'nanoid';
+import { produce } from 'immer';
 
-function App() {
-  const [count, setCount] = useState(0)
+import { Button } from '@/components/ui/button';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { nodeDefinitions } from '@/lib/nodes';
+import type { CustomNode, NodeDefinition } from '@/lib/nodes';
+import { TextInputNode } from '@/components/nodes/TextInputNode';
+import { TextDisplayNode } from '@/components/nodes/TextDisplayNode';
+import { Base64Node } from '@/components/nodes/Base64Node';
+import { HashNode } from '@/components/nodes/HashNode';
+import { JsonNode } from '@/components/nodes/JsonNode';
+import { RegexNode } from '@/components/nodes/RegexNode';
+import { CryptoNode } from '@/components/nodes/CryptoNode';
+import { NodeContext } from '@/contexts/NodeContext';
+
+const FlowWithLogic = () => {
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const [nodes, setNodes] = useState<CustomNode[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const { project } = useReactFlow();
+
+  const nodeTypes = useMemo(() => ({
+    textInput: TextInputNode,
+    textDisplay: TextDisplayNode,
+    base64: Base64Node,
+    hash: HashNode,
+    json: JsonNode,
+    regex: RegexNode,
+    crypto: CryptoNode,
+  }), []);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), [setNodes]);
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), [setEdges]);
+  const onConnect = useCallback((connection: Connection) => setEdges((eds) => addEdge(connection, eds)), [setEdges]);
+
+  const onDelete = useCallback(() => {
+    const selectedNodes = nodes.filter(n => n.selected).map(n => n.id);
+    const selectedEdges = edges.filter(e => e.selected).map(e => e.id);
+    setNodes(nds => nds.filter(n => !selectedNodes.includes(n.id)));
+    setEdges(eds => eds.filter(e => !selectedEdges.includes(e.id)));
+  }, [nodes, edges, setNodes, setEdges]);
+
+  useEffect(() => {
+    document.addEventListener('delete-selected', onDelete);
+    return () => document.removeEventListener('delete-selected', onDelete);
+  }, [onDelete]);
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const onDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    const type = event.dataTransfer.getData('application/reactflow');
+    if (!type) return;
+
+    const position = project({
+      x: event.clientX - (reactFlowWrapper.current?.getBoundingClientRect().left || 0),
+      y: event.clientY - (reactFlowWrapper.current?.getBoundingClientRect().top || 0),
+    });
+
+    const definition = nodeDefinitions[type] as NodeDefinition;
+    const newNode: CustomNode = {
+      id: nanoid(),
+      type,
+      position,
+      data: {
+        definition,
+        outputValues: {},
+        internalState: { ...(definition.initialState || {}) },
+      },
+    };
+    setNodes((nds) => nds.concat(newNode));
+  }, [project]);
+
+  const updateNodeState = useCallback((nodeId: string, newInternalState: Record<string, unknown>) => {
+    setNodes(produce(draft => {
+      const node = draft.find(n => n.id === nodeId);
+      if (node) {
+        node.data.internalState = { ...node.data.internalState, ...newInternalState };
+      }
+    }));
+  }, []);
+
+  useEffect(() => {
+    const nodeMap = new Map(nodes.map(node => [node.id, node]));
+    if (nodeMap.size !== nodes.length) return;
+
+    const inDegree = new Map(nodes.map(node => [node.id, 0]));
+    for (const edge of edges) {
+      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+    }
+
+    const queue = nodes.filter(node => inDegree.get(node.id) === 0);
+    const sortedNodes: CustomNode[] = [];
+    while (queue.length > 0) {
+      const u = queue.shift()!;
+      sortedNodes.push(u);
+      for (const edge of edges.filter(e => e.source === u.id)) {
+        const vId = edge.target;
+        inDegree.set(vId, (inDegree.get(vId) || 1) - 1);
+        if (inDegree.get(vId) === 0) {
+          const vNode = nodeMap.get(vId);
+          if (vNode) queue.push(vNode);
+        }
+      }
+    }
+
+    const newNodes = produce(nodes, draft => {
+      const draftMap = new Map(draft.map(n => [n.id, n]));
+      for (const node of sortedNodes) {
+        const draftNode = draftMap.get(node.id)!;
+        const incomingEdges = edges.filter(e => e.target === node.id);
+        const inputs = incomingEdges.map(edge => {
+          const sourceNode = draftMap.get(edge.source)!;
+          const sourceHandle = edge.sourceHandle || 'output';
+          return sourceNode?.data.outputValues[sourceHandle];
+        });
+
+        try {
+          const outputs = draftNode.data.definition.processor(inputs, draftNode.data.internalState);
+          draftNode.data.hasError = false;
+          draftNode.data.definition.outputs.forEach((port, i) => {
+            draftNode.data.outputValues[port.id] = outputs[i];
+          });
+        } catch (error) {
+            console.error('Processing error in node', draftNode.id, error);
+            draftNode.data.hasError = true;
+        }
+
+        if (draftNode.type === 'textDisplay') {
+          draftNode.data.internalState.inputValue = inputs[0];
+        }
+      }
+    });
+
+    if (JSON.stringify(newNodes) !== JSON.stringify(nodes)) {
+        setNodes(newNodes);
+    }
+
+  }, [JSON.stringify(nodes.map(n => n.data.internalState)), edges, nodes.length]);
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <NodeContext.Provider value={{ updateNodeState }}>
+      <div className="flex-grow h-full" ref={reactFlowWrapper}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          deleteKeyCode={['Backspace', 'Delete']}
+          fitView
+          className="bg-gray-100"
+          proOptions={{ hideAttribution: true }}
+        >
+          <Controls />
+          <Background />
+        </ReactFlow>
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    </NodeContext.Provider>
+  );
+};
+
+function App() {
+  return (
+    <div className="h-screen w-screen flex flex-col">
+      <header className="p-3 border-b shadow-sm bg-white flex justify-between items-center">
+        <div>
+          <h1 className="text-xl font-bold">Text Flow</h1>
+          <p className="text-sm text-gray-500">A streaming text processing tool. Drag nodes from the left panel to build your workflow.</p>
+        </div>
+        <Button variant="destructive" onClick={() => document.dispatchEvent(new Event('delete-selected'))}>Delete Selected</Button>
+      </header>
+      <main className="flex-grow flex">
+        <ReactFlowProvider>
+          <Sidebar />
+          <FlowWithLogic />
+        </ReactFlowProvider>
+      </main>
+    </div>
+  );
 }
 
-export default App
+export default App;
