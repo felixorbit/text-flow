@@ -1,11 +1,11 @@
-
-import { Handle, Position } from 'reactflow';
 import { useNodeContext } from '@/contexts/NodeContext';
+import { BaseNode } from './BaseNode';
 import type { CustomNodeProps } from './types';
 
 const algorithms = ['MD5', 'SHA1', 'SHA256', 'SHA512'];
 
-export function HashNode({ id, data }: CustomNodeProps) {
+export function HashNode(props: CustomNodeProps) {
+  const { id, data } = props;
   const { updateNodeState } = useNodeContext();
 
   const handleAlgoChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -13,31 +13,21 @@ export function HashNode({ id, data }: CustomNodeProps) {
   };
 
   return (
-    <div className={`p-4 border rounded-md bg-white shadow-lg w-64 ${data.hasError ? 'border-red-500' : ''}`}>
-      <Handle
-        type="target"
-        position={Position.Left}
-        id={data.definition.inputs[0].id}
-        className="!bg-green-500"
-      />
-      <label className="font-bold text-sm">{data.definition.name}</label>
-      <div className="mt-2">
-        <label htmlFor={`algo-${id}`} className="text-sm">Algorithm</label>
-        <select 
-          id={`algo-${id}`}
-          className="w-full mt-1 p-2 border rounded-md text-sm focus:outline-blue-500"
-          value={data.internalState.algorithm as string}
-          onChange={handleAlgoChange}
-        >
-          {algorithms.map(algo => <option key={algo} value={algo}>{algo}</option>)}
-        </select>
+    <BaseNode {...props}>
+      <div className="space-y-2">
+        <label htmlFor={`algo-${id}`} className="text-xs font-medium text-muted-foreground uppercase">Algorithm</label>
+        <div className="relative">
+            <select 
+            id={`algo-${id}`}
+            className="w-full p-2 bg-background border rounded-md text-sm appearance-none focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+            value={data.internalState.algorithm as string}
+            onChange={handleAlgoChange}
+            >
+            {algorithms.map(algo => <option key={algo} value={algo}>{algo}</option>)}
+            </select>
+            {/* Custom arrow could go here if we hide default appearance */}
+        </div>
       </div>
-      <Handle
-        type="source"
-        position={Position.Right}
-        id={data.definition.outputs[0].id}
-        className="!bg-blue-500"
-      />
-    </div>
+    </BaseNode>
   );
 }

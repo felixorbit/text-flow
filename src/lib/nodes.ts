@@ -1,6 +1,7 @@
 import type { Node, NodeProps } from 'reactflow';
 import { Buffer } from 'buffer';
 import * as CryptoJS from 'crypto-js';
+import { TextCursorInput, Type, Binary, Hash, FileJson, Regex, Lock } from 'lucide-react';
 
 // --- Component Imports ---
 import { TextInputNode } from '@/components/nodes/TextInputNode';
@@ -20,7 +21,10 @@ export interface CustomNodeData {
   definition: NodeDefinition;
   outputValues: Record<string, unknown>;
   internalState: Record<string, unknown>;
+  incomingValue?: unknown;
   hasError?: boolean;
+  lastInputs?: unknown[];
+  lastInternalState?: Record<string, unknown>;
 }
 
 export type CustomNode = Node<CustomNodeData>;
@@ -28,6 +32,7 @@ export type CustomNode = Node<CustomNodeData>;
 export interface NodeDefinition {
   type: string;
   name: string;
+  icon: React.ElementType;
   inputs: Port[];
   outputs: Port[];
   processor: Processor;
@@ -105,14 +110,23 @@ const cryptoProcessor: Processor = (inputs, state) => {
   const input = String(inputs[0] || '');
   const key = state.key as string || '';
   const mode = state.mode || 'encrypt';
+
+  if (!key) return ['']; // Return empty if no key, don't error immediately while typing
+
   try {
-    if (!key) throw new Error('Secret Key is required');
     if (mode === 'encrypt') {
       return [CryptoJS.AES.encrypt(input, key).toString()];
     } else {
+      // Decrypt might fail if key is wrong or input is not valid ciphertext
+      if (!input) return [''];
       const bytes = CryptoJS.AES.decrypt(input, key);
       const originalText = bytes.toString(CryptoJS.enc.Utf8);
-      if (!originalText) throw new Error('Decryption failed (wrong key?)');
+      // If decryption produces invalid UTF8 (empty string often indicates failure in CryptoJS), assume failure
+      if (originalText === '') { 
+          // Don't throw here, just return empty or a helpful message? 
+          // Throwing allows the UI to show the red error border.
+          throw new Error('Decryption failed'); 
+      }
       return [originalText];
     }
   } catch (e) {
@@ -127,6 +141,7 @@ export const nodeDefinitions: Record<string, NodeDefinition> = {
   textInput: {
     type: 'textInput',
     name: 'Text Input',
+    icon: TextCursorInput,
     inputs: [],
     outputs: [{ id: 'text', name: 'Text' }],
     processor: textInputProcessor,
@@ -136,6 +151,7 @@ export const nodeDefinitions: Record<string, NodeDefinition> = {
   textDisplay: {
     type: 'textDisplay',
     name: 'Text Display',
+    icon: Type,
     inputs: [{ id: 'text', name: 'Text' }],
     outputs: [],
     processor: textDisplayProcessor,
@@ -144,6 +160,7 @@ export const nodeDefinitions: Record<string, NodeDefinition> = {
   base64: {
     type: 'base64',
     name: 'Base64',
+    icon: Binary,
     inputs: [{ id: 'input', name: 'Input' }],
     outputs: [{ id: 'output', name: 'Output' }],
     processor: base64Processor,
@@ -153,6 +170,7 @@ export const nodeDefinitions: Record<string, NodeDefinition> = {
   hash: {
     type: 'hash',
     name: 'Hash',
+    icon: Hash,
     inputs: [{ id: 'input', name: 'Input' }],
     outputs: [{ id: 'output', name: 'Output' }],
     processor: hashProcessor,
@@ -162,6 +180,7 @@ export const nodeDefinitions: Record<string, NodeDefinition> = {
   json: {
     type: 'json',
     name: 'JSON',
+    icon: FileJson,
     inputs: [{ id: 'input', name: 'Input' }],
     outputs: [{ id: 'output', name: 'Output' }],
     processor: jsonProcessor,
@@ -171,6 +190,7 @@ export const nodeDefinitions: Record<string, NodeDefinition> = {
   regex: {
     type: 'regex',
     name: 'Regex Match',
+    icon: Regex,
     inputs: [{ id: 'input', name: 'Input' }],
     outputs: [{ id: 'output', name: 'Output' }],
     processor: regexProcessor,
@@ -180,6 +200,7 @@ export const nodeDefinitions: Record<string, NodeDefinition> = {
   crypto: {
     type: 'crypto',
     name: 'Encrypt / Decrypt',
+    icon: Lock,
     inputs: [{ id: 'input', name: 'Input' }],
     outputs: [{ id: 'output', name: 'Output' }],
     processor: cryptoProcessor,

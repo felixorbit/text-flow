@@ -1,9 +1,9 @@
-
-import { Handle, Position } from 'reactflow';
 import { useNodeContext } from '@/contexts/NodeContext';
+import { BaseNode } from './BaseNode';
 import type { CustomNodeProps } from './types';
 
-export function TextInputNode({ id, data }: CustomNodeProps) {
+export function TextInputNode(props: CustomNodeProps) {
+  const { id, data } = props;
   const { updateNodeState } = useNodeContext();
 
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -11,20 +11,13 @@ export function TextInputNode({ id, data }: CustomNodeProps) {
   };
 
   return (
-    <div className={`p-4 border rounded-md bg-white shadow-lg w-64 ${data.hasError ? 'border-red-500' : ''}`}>
-      <label className="font-bold text-sm">{data.definition.name}</label>
+    <BaseNode {...props}>
       <textarea
-        className="w-full mt-2 p-2 border rounded-md text-sm font-mono focus:outline-blue-500"
-        rows={5}
-        value={data.internalState.text as string}
+        className="w-full p-2 text-sm font-mono bg-background border rounded-md focus:outline-none focus:ring-1 focus:ring-ring min-h-[100px] resize-y"
+        placeholder="Enter text..."
+        value={(data.internalState.text as string) || ''}
         onChange={handleChange}
       />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id={data.definition.outputs[0].id}
-        className="!bg-blue-500"
-      />
-    </div>
+    </BaseNode>
   );
 }

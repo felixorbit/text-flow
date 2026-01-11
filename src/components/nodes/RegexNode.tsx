@@ -1,9 +1,9 @@
-
-import { Handle, Position } from 'reactflow';
 import { useNodeContext } from '@/contexts/NodeContext';
+import { BaseNode } from './BaseNode';
 import type { CustomNodeProps } from './types';
 
-export function RegexNode({ id, data }: CustomNodeProps) {
+export function RegexNode(props: CustomNodeProps) {
+  const { id, data } = props;
   const { updateNodeState } = useNodeContext();
 
   const handlePatternChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -15,34 +15,31 @@ export function RegexNode({ id, data }: CustomNodeProps) {
   };
 
   return (
-    <div className={`p-4 border rounded-md bg-white shadow-lg w-72 ${data.hasError ? 'border-red-500' : ''}`}>
-      <Handle type="target" position={Position.Left} id="input" className="!bg-green-500" />
-      <label className="font-bold text-sm">{data.definition.name}</label>
-      <div className="mt-2 space-y-2">
+    <BaseNode {...props}>
+      <div className="space-y-3">
         <div>
-          <label htmlFor={`pattern-${id}`} className="text-xs font-medium">Pattern</label>
+          <label htmlFor={`pattern-${id}`} className="text-xs font-medium text-muted-foreground uppercase block mb-1">Pattern</label>
           <input
             type="text"
             id={`pattern-${id}`}
-            className="w-full mt-1 p-1 border rounded-md text-sm font-mono focus:outline-blue-500"
+            className="w-full p-2 bg-background border rounded-md text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
             value={data.internalState.pattern as string}
             onChange={handlePatternChange}
             placeholder="e.g., [a-z]+"
           />
         </div>
         <div>
-          <label htmlFor={`flags-${id}`} className="text-xs font-medium">Flags</label>
+          <label htmlFor={`flags-${id}`} className="text-xs font-medium text-muted-foreground uppercase block mb-1">Flags</label>
           <input
             type="text"
             id={`flags-${id}`}
-            className="w-full mt-1 p-1 border rounded-md text-sm font-mono focus:outline-blue-500"
+            className="w-full p-2 bg-background border rounded-md text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
             value={data.internalState.flags as string}
             onChange={handleFlagsChange}
             placeholder="e.g., gi"
           />
         </div>
       </div>
-      <Handle type="source" position={Position.Right} id="output" className="!bg-blue-500" />
-    </div>
+    </BaseNode>
   );
 }

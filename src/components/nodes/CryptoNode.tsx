@@ -1,9 +1,9 @@
-
-import { Handle, Position } from 'reactflow';
 import { useNodeContext } from '@/contexts/NodeContext';
+import { BaseNode } from './BaseNode';
 import type { CustomNodeProps } from './types';
 
-export function CryptoNode({ id, data }: CustomNodeProps) {
+export function CryptoNode(props: CustomNodeProps) {
+  const { id, data } = props;
   const { updateNodeState } = useNodeContext();
 
   const handleModeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -14,35 +14,36 @@ export function CryptoNode({ id, data }: CustomNodeProps) {
     updateNodeState(id, { key: event.target.value });
   };
 
+  const mode = data.internalState.mode;
+
   return (
-    <div className={`p-4 border rounded-md bg-white shadow-lg w-72 ${data.hasError ? 'border-red-500' : ''}`}>
-      <Handle type="target" position={Position.Left} id="input" className="!bg-green-500" />
-      <label className="font-bold text-sm">{data.definition.name} (AES)</label>
-      
-      <div className="mt-2 space-y-2">
-        <div className="text-sm grid grid-cols-2 gap-1">
-            <div className="flex items-center gap-2">
-                <input type="radio" id={`${id}-encrypt`} name={`mode-${id}`} value="encrypt" checked={data.internalState.mode === 'encrypt'} onChange={handleModeChange} />
-                <label htmlFor={`${id}-encrypt`}>Encrypt</label>
-            </div>
-            <div className="flex items-center gap-2">
-                <input type="radio" id={`${id}-decrypt`} name={`mode-${id}`} value="decrypt" checked={data.internalState.mode === 'decrypt'} onChange={handleModeChange} />
-                <label htmlFor={`${id}-decrypt`}>Decrypt</label>
+    <BaseNode {...props}>
+      <div className="space-y-4">
+        <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase block mb-2">Operation</label>
+            <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-primary transition-colors">
+                    <input type="radio" name={`mode-${id}`} value="encrypt" checked={mode === 'encrypt'} onChange={handleModeChange} className="accent-primary w-4 h-4" />
+                    Encrypt
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-primary transition-colors">
+                    <input type="radio" name={`mode-${id}`} value="decrypt" checked={mode === 'decrypt'} onChange={handleModeChange} className="accent-primary w-4 h-4" />
+                    Decrypt
+                </label>
             </div>
         </div>
         <div>
-          <label htmlFor={`key-${id}`} className="text-xs font-medium">Secret Key</label>
+          <label htmlFor={`key-${id}`} className="text-xs font-medium text-muted-foreground uppercase block mb-1">Secret Key</label>
           <input
             type="password"
             id={`key-${id}`}
-            className="w-full mt-1 p-1 border rounded-md text-sm font-mono focus:outline-blue-500"
+            className="w-full p-2 bg-background border rounded-md text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
             value={data.internalState.key as string}
             onChange={handleKeyChange}
+            placeholder="Enter key..."
           />
         </div>
       </div>
-
-      <Handle type="source" position={Position.Right} id="output" className="!bg-blue-500" />
-    </div>
+    </BaseNode>
   );
 }

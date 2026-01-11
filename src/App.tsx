@@ -7,6 +7,7 @@ import ReactFlow, {
   applyEdgeChanges,
   addEdge,
   useReactFlow,
+  BackgroundVariant,
 } from 'reactflow';
 import type {
   NodeChange,
@@ -17,6 +18,7 @@ import type {
 import 'reactflow/dist/style.css';
 import { nanoid } from 'nanoid';
 import { produce } from 'immer';
+import { Trash2, BoxSelect } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -59,8 +61,9 @@ const FlowWithLogic = () => {
   }, [nodes, edges, setNodes, setEdges]);
 
   useEffect(() => {
-    document.addEventListener('delete-selected', onDelete);
-    return () => document.removeEventListener('delete-selected', onDelete);
+    const handleDeleteEvent = () => onDelete();
+    document.addEventListener('delete-selected', handleDeleteEvent);
+    return () => document.removeEventListener('delete-selected', handleDeleteEvent);
   }, [onDelete]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -136,19 +139,28 @@ const FlowWithLogic = () => {
           return sourceNode?.data.outputValues[sourceHandle];
         });
 
-        try {
-          const outputs = draftNode.data.definition.processor(inputs, draftNode.data.internalState);
-          draftNode.data.hasError = false;
-          draftNode.data.definition.outputs.forEach((port, i) => {
-            draftNode.data.outputValues[port.id] = outputs[i];
-          });
-        } catch (error) {
-            console.error('Processing error in node', draftNode.id, error);
-            draftNode.data.hasError = true;
+        const inputsChanged = JSON.stringify(inputs) !== JSON.stringify(draftNode.data.lastInputs);
+        const stateChanged = JSON.stringify(draftNode.data.internalState) !== JSON.stringify(draftNode.data.lastInternalState);
+
+        if (inputsChanged || stateChanged) {
+            try {
+              const outputs = draftNode.data.definition.processor(inputs, draftNode.data.internalState);
+              draftNode.data.hasError = false;
+              draftNode.data.definition.outputs.forEach((port, i) => {
+                draftNode.data.outputValues[port.id] = outputs[i];
+              });
+            } catch (error) {
+                console.error('Processing error in node', draftNode.id, error);
+                draftNode.data.hasError = true;
+            }
+            
+            draftNode.data.lastInputs = inputs;
+            // Store a snapshot of the state
+            draftNode.data.lastInternalState = JSON.parse(JSON.stringify(draftNode.data.internalState));
         }
 
         if (draftNode.type === 'textDisplay') {
-          draftNode.data.internalState.inputValue = inputs[0];
+          draftNode.data.incomingValue = inputs[0];
         }
       }
     });
@@ -173,11 +185,11 @@ const FlowWithLogic = () => {
           onDragOver={onDragOver}
           deleteKeyCode={['Backspace', 'Delete']}
           fitView
-          className="bg-gray-100"
+          className="bg-slate-50/50"
           proOptions={{ hideAttribution: true }}
         >
-          <Controls />
-          <Background />
+          <Controls className="bg-white border-2 border-border shadow-md rounded-lg overflow-hidden" />
+          <Background color="#cbd5e1" gap={20} size={1} variant={BackgroundVariant.Dots} />
         </ReactFlow>
       </div>
     </NodeContext.Provider>
@@ -186,15 +198,34 @@ const FlowWithLogic = () => {
 
 function App() {
   return (
-    <div className="h-screen w-screen flex flex-col">
-      <header className="p-3 border-b shadow-sm bg-white flex justify-between items-center">
-        <div>
-          <h1 className="text-xl font-bold">Text Flow</h1>
-          <p className="text-sm text-gray-500">A streaming text processing tool. Drag nodes from the left panel to build your workflow.</p>
+    <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden font-sans">
+      <header className="px-5 py-3 border-b bg-background/95 backdrop-blur-md flex justify-between items-center shadow-sm z-50 supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary text-primary-foreground p-2 rounded-lg shadow-sm">
+             <BoxSelect className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight leading-none">Text Flow</h1>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-0.5">Workflow Editor</p>
+          </div>
         </div>
-        <Button variant="destructive" onClick={() => document.dispatchEvent(new Event('delete-selected'))}>Delete Selected</Button>
+        <div className="flex items-center gap-4">
+             <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-full border">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                System Ready
+            </div>
+            <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={() => document.dispatchEvent(new Event('delete-selected'))}
+                className="gap-2 shadow-sm"
+            >
+                <Trash2 className="w-4 h-4" />
+                Delete Selected
+            </Button>
+        </div>
       </header>
-      <main className="flex-grow flex">
+      <main className="flex-grow flex overflow-hidden">
         <ReactFlowProvider>
           <Sidebar />
           <FlowWithLogic />
