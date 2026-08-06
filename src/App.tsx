@@ -21,6 +21,7 @@ import { produce } from 'immer';
 import { Trash2, BoxSelect } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ContextMenu } from '@/components/ui/ContextMenu';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { nodeDefinitions } from '@/lib/nodes';
 import type { CustomNode, NodeDefinition } from '@/lib/nodes';
@@ -33,10 +34,25 @@ import { RegexNode } from '@/components/nodes/RegexNode';
 import { CryptoNode } from '@/components/nodes/CryptoNode';
 import { NodeContext } from '@/contexts/NodeContext';
 
+const CONTEXT_MENU_WIDTH = 176;
+const CONTEXT_MENU_HEIGHT = 56;
+const CONTEXT_MENU_MARGIN = 8;
+
+type ContextMenuTarget = {
+  type: 'node' | 'edge';
+  id: string;
+  position: {
+    x: number;
+    y: number;
+  };
+};
+
 const FlowWithLogic = () => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+  const [contextMenu, setContextMenu] = useState<ContextMenuTarget | null>(null);
   const { project } = useReactFlow();
 
   const nodeTypes = useMemo(() => ({
@@ -53,12 +69,87 @@ const FlowWithLogic = () => {
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), [setEdges]);
   const onConnect = useCallback((connection: Connection) => setEdges((eds) => addEdge(connection, eds)), [setEdges]);
 
+  const deleteElements = useCallback((nodeIds: Set<string>, edgeIds: Set<string>) => {
+    setNodes(nds => nds.filter(node => !nodeIds.has(node.id)));
+    setEdges(eds => eds.filter(edge => (
+      !edgeIds.has(edge.id) && !nodeIds.has(edge.source) && !nodeIds.has(edge.target)
+    )));
+  }, []);
+
   const onDelete = useCallback(() => {
-    const selectedNodes = nodes.filter(n => n.selected).map(n => n.id);
-    const selectedEdges = edges.filter(e => e.selected).map(e => e.id);
-    setNodes(nds => nds.filter(n => !selectedNodes.includes(n.id)));
-    setEdges(eds => eds.filter(e => !selectedEdges.includes(e.id)));
-  }, [nodes, edges, setNodes, setEdges]);
+    const selectedNodeIds = new Set(nodes.filter(node => node.selected).map(node => node.id));
+    const selectedEdgeIds = new Set(edges.filter(edge => edge.selected).map(edge => edge.id));
+    deleteElements(selectedNodeIds, selectedEdgeIds);
+  }, [deleteElements, edges, nodes]);
+
+  const getContextMenuPosition = useCallback((event: React.MouseEvent) => {
+    const bounds = reactFlowWrapper.current?.getBoundingClientRect();
+    if (!bounds) return { x: 0, y: 0 };
+
+    const maxX = Math.max(CONTEXT_MENU_MARGIN, bounds.width - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN);
+    const maxY = Math.max(CONTEXT_MENU_MARGIN, bounds.height - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_MARGIN);
+
+    return {
+      x: Math.min(Math.max(event.clientX - bounds.left, CONTEXT_MENU_MARGIN), maxX),
+      y: Math.min(Math.max(event.clientY - bounds.top, CONTEXT_MENU_MARGIN), maxY),
+    };
+  }, []);
+
+  const onNodeContextMenu = useCallback((event: React.MouseEvent, node: CustomNode) => {
+    event.preventDefault();
+    setContextMenu({
+      type: 'node',
+      id: node.id,
+      position: getContextMenuPosition(event),
+    });
+  }, [getContextMenuPosition]);
+
+  const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    setContextMenu({
+      type: 'edge',
+      id: edge.id,
+      position: getContextMenuPosition(event),
+    });
+  }, [getContextMenuPosition]);
+
+  const onContextMenuDelete = useCallback(() => {
+    if (!contextMenu) return;
+
+    const targetSelected = contextMenu.type === 'node'
+      ? nodes.some(node => node.id === contextMenu.id && node.selected)
+      : edges.some(edge => edge.id === contextMenu.id && edge.selected);
+
+    if (targetSelected) {
+      onDelete();
+    } else if (contextMenu.type === 'node') {
+      deleteElements(new Set([contextMenu.id]), new Set());
+    } else {
+      deleteElements(new Set(), new Set([contextMenu.id]));
+    }
+
+    setContextMenu(null);
+  }, [contextMenu, deleteElements, edges, nodes, onDelete]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!contextMenuRef.current?.contains(event.target as globalThis.Node)) {
+        setContextMenu(null);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setContextMenu(null);
+    };
+
+    document.addEventListener('pointerdown', closeOnPointerDown);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnPointerDown);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [contextMenu]);
 
   useEffect(() => {
     const handleDeleteEvent = () => onDelete();
@@ -173,7 +264,7 @@ const FlowWithLogic = () => {
 
   return (
     <NodeContext.Provider value={{ updateNodeState }}>
-      <div className="flex-grow h-full" ref={reactFlowWrapper}>
+      <div className="relative flex-grow h-full" ref={reactFlowWrapper}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -183,6 +274,9 @@ const FlowWithLogic = () => {
           onConnect={onConnect}
           onDrop={onDrop}
           onDragOver={onDragOver}
+          onNodeContextMenu={onNodeContextMenu}
+          onEdgeContextMenu={onEdgeContextMenu}
+          onPaneClick={() => setContextMenu(null)}
           deleteKeyCode={['Backspace', 'Delete']}
           fitView
           className="bg-slate-50/50"
@@ -191,6 +285,13 @@ const FlowWithLogic = () => {
           <Controls className="bg-white border-2 border-border shadow-md rounded-lg overflow-hidden" />
           <Background color="#cbd5e1" gap={20} size={1} variant={BackgroundVariant.Dots} />
         </ReactFlow>
+        {contextMenu && (
+          <ContextMenu
+            menuRef={contextMenuRef}
+            position={contextMenu.position}
+            onDelete={onContextMenuDelete}
+          />
+        )}
       </div>
     </NodeContext.Provider>
   );
