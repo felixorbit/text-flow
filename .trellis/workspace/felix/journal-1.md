@@ -47,3 +47,24 @@ Added a unified line-based Text Diff node with deterministic multi-input port ma
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: Focused workflow use mode
+
+**Date**: 2026-08-07
+**Task**: Focused workflow use mode
+**Branch**: `main`
+
+### Summary
+
+Added a same-page Build/Use workflow experience with automatically exposed named text endpoints, live shared evaluation, responsive long-text editing, and robust failure/cycle handling.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4e7105a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
