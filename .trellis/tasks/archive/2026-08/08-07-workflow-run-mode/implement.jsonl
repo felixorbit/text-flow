@@ -1,0 +1,4 @@
+{"file":".trellis/tasks/08-07-workflow-run-mode/research/current-behavior.md","reason":"Documents current workflow ownership, dedicated I/O contracts, evaluator behavior, integration points, and implementation risks."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Defines processor state, output propagation, declared target-port ordering, and the prohibition on duplicating processor computation in UI components."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Provides the required data-flow and boundary checks for moving evaluation into a shared module consumed by two presentation modes."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Guides extraction of the evaluator as the single execution owner and prevents duplicated endpoint or processor behavior."}
