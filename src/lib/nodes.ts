@@ -23,8 +23,13 @@ export interface CustomNodeData {
   definition: NodeDefinition;
   outputValues: Record<string, unknown>;
   internalState: Record<string, unknown>;
+  publicName?: string;
   incomingValue?: unknown;
   hasError?: boolean;
+  evaluationError?: {
+    kind: 'processing' | 'cycle';
+    message: string;
+  };
   lastInputs?: unknown[];
   lastInternalState?: Record<string, unknown>;
 }
@@ -46,6 +51,12 @@ export interface NodeDefinition {
 
 const textInputProcessor: Processor = (_inputs, state) => [state.text];
 const textDisplayProcessor: Processor = (_inputs, _state) => [];
+const hashers: Record<string, typeof CryptoJS.SHA256> = {
+  MD5: CryptoJS.MD5,
+  SHA1: CryptoJS.SHA1,
+  SHA256: CryptoJS.SHA256,
+  SHA512: CryptoJS.SHA512,
+};
 
 const base64Processor: Processor = (inputs, state) => {
   const input = inputs[0] || '';
@@ -63,7 +74,7 @@ const hashProcessor: Processor = (inputs, state) => {
   const input = String(inputs[0] || '');
   const algorithm = state.algorithm as string || 'SHA256';
   try {
-    const hasher = (CryptoJS as any)[algorithm];
+    const hasher = hashers[algorithm];
     if (!hasher) throw new Error(`Algorithm ${algorithm} not found`);
     return [hasher(input).toString()];
   } catch (e) {

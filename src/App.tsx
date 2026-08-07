@@ -33,7 +33,9 @@ import { JsonNode } from '@/components/nodes/JsonNode';
 import { RegexNode } from '@/components/nodes/RegexNode';
 import { CryptoNode } from '@/components/nodes/CryptoNode';
 import { TextDiffNode } from '@/components/nodes/TextDiffNode';
+import { WorkflowRunView } from '@/components/workflow/WorkflowRunView';
 import { NodeContext } from '@/contexts/NodeContext';
+import { evaluateWorkflow } from '@/lib/workflow';
 
 const CONTEXT_MENU_WIDTH = 176;
 const CONTEXT_MENU_HEIGHT = 56;
@@ -48,7 +50,14 @@ type ContextMenuTarget = {
   };
 };
 
-const FlowWithLogic = () => {
+type AppMode = 'build' | 'use';
+
+interface FlowWithLogicProps {
+  mode: AppMode;
+  onBackToBuild: () => void;
+}
+
+const FlowWithLogic = ({ mode, onBackToBuild }: FlowWithLogicProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
@@ -197,112 +206,72 @@ const FlowWithLogic = () => {
     }));
   }, []);
 
+  const updateNodeMetadata = useCallback((nodeId: string, publicName: string | undefined) => {
+    setNodes(produce(draft => {
+      const node = draft.find(candidate => candidate.id === nodeId);
+      if (node) {
+        node.data.publicName = publicName;
+      }
+    }));
+  }, []);
+
+  const evaluationKey = JSON.stringify(nodes.map(node => ({
+    id: node.id,
+    type: node.type,
+    internalState: node.data.internalState,
+  })));
+
   useEffect(() => {
-    const nodeMap = new Map(nodes.map(node => [node.id, node]));
-    if (nodeMap.size !== nodes.length) return;
-
-    const inDegree = new Map(nodes.map(node => [node.id, 0]));
-    for (const edge of edges) {
-      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
-    }
-
-    const queue = nodes.filter(node => inDegree.get(node.id) === 0);
-    const sortedNodes: CustomNode[] = [];
-    while (queue.length > 0) {
-      const u = queue.shift()!;
-      sortedNodes.push(u);
-      for (const edge of edges.filter(e => e.source === u.id)) {
-        const vId = edge.target;
-        inDegree.set(vId, (inDegree.get(vId) || 1) - 1);
-        if (inDegree.get(vId) === 0) {
-          const vNode = nodeMap.get(vId);
-          if (vNode) queue.push(vNode);
-        }
-      }
-    }
-
-    const newNodes = produce(nodes, draft => {
-      const draftMap = new Map(draft.map(n => [n.id, n]));
-      for (const node of sortedNodes) {
-        const draftNode = draftMap.get(node.id)!;
-        const incomingEdges = edges.filter(e => e.target === node.id);
-        const inputs = draftNode.data.definition.inputs.map(port => {
-          const edge = incomingEdges.find(incomingEdge => incomingEdge.targetHandle === port.id);
-          if (!edge) return undefined;
-
-          const sourceNode = draftMap.get(edge.source)!;
-          const sourceHandle = edge.sourceHandle || 'output';
-          return sourceNode?.data.outputValues[sourceHandle];
-        });
-
-        const inputsChanged = JSON.stringify(inputs) !== JSON.stringify(draftNode.data.lastInputs);
-        const stateChanged = JSON.stringify(draftNode.data.internalState) !== JSON.stringify(draftNode.data.lastInternalState);
-
-        if (inputsChanged || stateChanged) {
-            try {
-              const outputs = draftNode.data.definition.processor(inputs, draftNode.data.internalState);
-              draftNode.data.hasError = false;
-              draftNode.data.definition.outputs.forEach((port, i) => {
-                draftNode.data.outputValues[port.id] = outputs[i];
-              });
-            } catch (error) {
-                console.error('Processing error in node', draftNode.id, error);
-                draftNode.data.hasError = true;
-            }
-            
-            draftNode.data.lastInputs = inputs;
-            // Store a snapshot of the state
-            draftNode.data.lastInternalState = JSON.parse(JSON.stringify(draftNode.data.internalState));
-        }
-
-        if (draftNode.type === 'textDisplay') {
-          draftNode.data.incomingValue = inputs[0];
-        }
-      }
+    setNodes(currentNodes => {
+      const result = evaluateWorkflow(currentNodes, edges);
+      return JSON.stringify(result.nodes) === JSON.stringify(currentNodes)
+        ? currentNodes
+        : result.nodes;
     });
-
-    if (JSON.stringify(newNodes) !== JSON.stringify(nodes)) {
-        setNodes(newNodes);
-    }
-
-  }, [JSON.stringify(nodes.map(n => n.data.internalState)), edges, nodes.length]);
+  }, [edges, evaluationKey]);
 
   return (
-    <NodeContext.Provider value={{ updateNodeState }}>
-      <div className="relative flex-grow h-full" ref={reactFlowWrapper}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onDrop={onDrop}
-          onDragOver={onDragOver}
-          onNodeContextMenu={onNodeContextMenu}
-          onEdgeContextMenu={onEdgeContextMenu}
-          onPaneClick={() => setContextMenu(null)}
-          deleteKeyCode={['Backspace', 'Delete']}
-          fitView
-          className="bg-slate-50/50"
-          proOptions={{ hideAttribution: true }}
-        >
-          <Controls className="bg-white border-2 border-border shadow-md rounded-lg overflow-hidden" />
-          <Background color="#cbd5e1" gap={20} size={1} variant={BackgroundVariant.Dots} />
-        </ReactFlow>
-        {contextMenu && (
-          <ContextMenu
-            menuRef={contextMenuRef}
-            position={contextMenu.position}
-            onDelete={onContextMenuDelete}
-          />
-        )}
-      </div>
+    <NodeContext.Provider value={{ updateNodeMetadata, updateNodeState }}>
+      {mode === 'build' ? (
+        <div className="relative flex-grow h-full" ref={reactFlowWrapper}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onNodeContextMenu={onNodeContextMenu}
+            onEdgeContextMenu={onEdgeContextMenu}
+            onPaneClick={() => setContextMenu(null)}
+            deleteKeyCode={['Backspace', 'Delete']}
+            fitView
+            className="bg-slate-50/50"
+            proOptions={{ hideAttribution: true }}
+          >
+            <Controls className="bg-white border-2 border-border shadow-md rounded-lg overflow-hidden" />
+            <Background color="#cbd5e1" gap={20} size={1} variant={BackgroundVariant.Dots} />
+          </ReactFlow>
+          {contextMenu && (
+            <ContextMenu
+              menuRef={contextMenuRef}
+              position={contextMenu.position}
+              onDelete={onContextMenuDelete}
+            />
+          )}
+        </div>
+      ) : (
+        <WorkflowRunView nodes={nodes} onBackToBuild={onBackToBuild} />
+      )}
     </NodeContext.Provider>
   );
 };
 
 function App() {
+  const [mode, setMode] = useState<AppMode>('build');
+
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden font-sans">
       <header className="px-5 py-3 border-b bg-background/95 backdrop-blur-md flex justify-between items-center shadow-sm z-50 supports-[backdrop-filter]:bg-background/60">
@@ -312,29 +281,60 @@ function App() {
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight leading-none">Text Flow</h1>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-0.5">Workflow Editor</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mt-0.5">
+              {mode === 'build' ? 'Workflow Editor' : 'Focused Workspace'}
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-             <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-full border">
+        <div className="flex items-center gap-2 sm:gap-4">
+            <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-full border">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                 System Ready
             </div>
-            <Button 
-                variant="destructive" 
-                size="sm" 
-                onClick={() => document.dispatchEvent(new Event('delete-selected'))}
-                className="gap-2 shadow-sm"
+            <div
+              className="flex items-center rounded-lg border bg-muted/40 p-0.5"
+              role="group"
+              aria-label="Workflow mode"
             >
+              <Button
+                variant={mode === 'build' ? 'secondary' : 'ghost'}
+                size="sm"
+                className={mode === 'build' ? 'h-8 shadow-sm' : 'h-8'}
+                aria-pressed={mode === 'build'}
+                onClick={() => setMode('build')}
+              >
+                Build
+              </Button>
+              <Button
+                variant={mode === 'use' ? 'secondary' : 'ghost'}
+                size="sm"
+                className={mode === 'use' ? 'h-8 shadow-sm' : 'h-8'}
+                aria-pressed={mode === 'use'}
+                onClick={() => setMode('use')}
+              >
+                Use
+              </Button>
+            </div>
+            {mode === 'build' && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => document.dispatchEvent(new Event('delete-selected'))}
+                className="hidden gap-2 shadow-sm sm:inline-flex"
+              >
                 <Trash2 className="w-4 h-4" />
                 Delete Selected
-            </Button>
+              </Button>
+            )}
         </div>
       </header>
       <main className="flex-grow flex overflow-hidden">
         <ReactFlowProvider>
-          <Sidebar />
-          <FlowWithLogic />
+          {mode === 'build' && <Sidebar />}
+          <FlowWithLogic
+            mode={mode}
+            onBackToBuild={() => setMode('build')}
+          />
         </ReactFlowProvider>
       </main>
     </div>

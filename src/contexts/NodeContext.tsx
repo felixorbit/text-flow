@@ -3,6 +3,7 @@ import { createContext, useContext } from 'react';
 
 interface NodeContextType {
   updateNodeState: (nodeId: string, newInternalState: Record<string, unknown>) => void;
+  updateNodeMetadata: (nodeId: string, publicName: string | undefined) => void;
 }
 
 export const NodeContext = createContext<NodeContextType | undefined>(undefined);
