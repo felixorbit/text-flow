@@ -32,6 +32,7 @@ import { HashNode } from '@/components/nodes/HashNode';
 import { JsonNode } from '@/components/nodes/JsonNode';
 import { RegexNode } from '@/components/nodes/RegexNode';
 import { CryptoNode } from '@/components/nodes/CryptoNode';
+import { TextDiffNode } from '@/components/nodes/TextDiffNode';
 import { NodeContext } from '@/contexts/NodeContext';
 
 const CONTEXT_MENU_WIDTH = 176;
@@ -63,6 +64,7 @@ const FlowWithLogic = () => {
     json: JsonNode,
     regex: RegexNode,
     crypto: CryptoNode,
+    textDiff: TextDiffNode,
   }), []);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), [setNodes]);
@@ -224,7 +226,10 @@ const FlowWithLogic = () => {
       for (const node of sortedNodes) {
         const draftNode = draftMap.get(node.id)!;
         const incomingEdges = edges.filter(e => e.target === node.id);
-        const inputs = incomingEdges.map(edge => {
+        const inputs = draftNode.data.definition.inputs.map(port => {
+          const edge = incomingEdges.find(incomingEdge => incomingEdge.targetHandle === port.id);
+          if (!edge) return undefined;
+
           const sourceNode = draftMap.get(edge.source)!;
           const sourceHandle = edge.sourceHandle || 'output';
           return sourceNode?.data.outputValues[sourceHandle];

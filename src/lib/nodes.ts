@@ -1,7 +1,8 @@
 import type { Node, NodeProps } from 'reactflow';
 import { Buffer } from 'buffer';
 import * as CryptoJS from 'crypto-js';
-import { TextCursorInput, Type, Binary, Hash, FileJson, Regex, Lock } from 'lucide-react';
+import { diffLines } from 'diff';
+import { TextCursorInput, Type, Binary, Hash, FileJson, Regex, Lock, FileDiff } from 'lucide-react';
 
 // --- Component Imports ---
 import { TextInputNode } from '@/components/nodes/TextInputNode';
@@ -11,6 +12,7 @@ import { HashNode } from '@/components/nodes/HashNode';
 import { JsonNode } from '@/components/nodes/JsonNode';
 import { RegexNode } from '@/components/nodes/RegexNode';
 import { CryptoNode } from '@/components/nodes/CryptoNode';
+import { TextDiffNode } from '@/components/nodes/TextDiffNode';
 
 // --- Type Definitions ---
 
@@ -135,6 +137,21 @@ const cryptoProcessor: Processor = (inputs, state) => {
   }
 };
 
+const textDiffProcessor: Processor = (inputs) => {
+  const original = String(inputs[0] ?? '');
+  const changed = String(inputs[1] ?? '');
+
+  if (original === changed) return ['No differences'];
+
+  const lines = diffLines(original, changed).flatMap(part => {
+    const prefix = part.added ? '+' : part.removed ? '-' : ' ';
+    const value = part.value.endsWith('\n') ? part.value.slice(0, -1) : part.value;
+    return value.split('\n').map(line => `${prefix}${line}`);
+  });
+
+  return [lines.join('\n')];
+};
+
 // --- Node Definitions Dictionary ---
 
 export const nodeDefinitions: Record<string, NodeDefinition> = {
@@ -206,5 +223,17 @@ export const nodeDefinitions: Record<string, NodeDefinition> = {
     processor: cryptoProcessor,
     initialState: { mode: 'encrypt', key: '' },
     component: CryptoNode,
+  },
+  textDiff: {
+    type: 'textDiff',
+    name: 'Text Diff',
+    icon: FileDiff,
+    inputs: [
+      { id: 'original', name: 'Original' },
+      { id: 'changed', name: 'Changed' },
+    ],
+    outputs: [{ id: 'diff', name: 'Diff' }],
+    processor: textDiffProcessor,
+    component: TextDiffNode,
   },
 };
