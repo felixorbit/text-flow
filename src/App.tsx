@@ -18,7 +18,7 @@ import type {
 import 'reactflow/dist/style.css';
 import { nanoid } from 'nanoid';
 import { produce } from 'immer';
-import { Trash2, BoxSelect } from 'lucide-react';
+import { BoxSelect } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ContextMenu } from '@/components/ui/ContextMenu';
@@ -162,12 +162,6 @@ const FlowWithLogic = ({ mode, onBackToBuild }: FlowWithLogicProps) => {
     };
   }, [contextMenu]);
 
-  useEffect(() => {
-    const handleDeleteEvent = () => onDelete();
-    document.addEventListener('delete-selected', handleDeleteEvent);
-    return () => document.removeEventListener('delete-selected', handleDeleteEvent);
-  }, [onDelete]);
-
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -287,10 +281,6 @@ function App() {
           </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
-            <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 px-3 py-1.5 rounded-full border">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                System Ready
-            </div>
             <div
               className="flex items-center rounded-lg border bg-muted/40 p-0.5"
               role="group"
@@ -315,17 +305,6 @@ function App() {
                 Use
               </Button>
             </div>
-            {mode === 'build' && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => document.dispatchEvent(new Event('delete-selected'))}
-                className="hidden gap-2 shadow-sm sm:inline-flex"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete Selected
-              </Button>
-            )}
         </div>
       </header>
       <main className="flex-grow flex overflow-hidden">
